@@ -20,11 +20,16 @@ PKG_CONFIG_PATH=/opt/homebrew/opt/opencv/lib/pkgconfig
 ### Build and Run
 
 ```bash
-$ git clone https://github.com/meteormin/gohome.git
-# CLI version. using gocron package
-$ go run cmd/gohome-cli/main.go
-# GUI version. using gocv package
-$ go run cmd/gohome-gui/main.go
+ GO HOME Deployments Makefile
 
+ Usage:
 
+        make {command}
+
+ Commands:
+
+        help                                                        helps (default)
+        clean                                                       clean build directory
+        run cmd={gohome-cli,gohome-gui,detector} flags={go flags}   run $(cmd)
+        build cmd={gohome-cli,gohome-gui,detector}                  build $(cmd)
 ```

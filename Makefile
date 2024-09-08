@@ -1,4 +1,4 @@
-PRJ_NAME=IVDDMS DM Server
+PRJ_NAME=GO HOME
 PRJ_DESC=$(PRJ_NAME) Deployments Makefile
 PRJ_BASE=$(shell pwd)
 BUILD_DIR=$(PRJ_BASE)/build
