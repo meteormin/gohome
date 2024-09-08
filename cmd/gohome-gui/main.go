@@ -10,6 +10,8 @@ import (
 	"go.uber.org/zap/zapcore"
 	"gocv.io/x/gocv"
 	"log"
+	"os"
+	"strconv"
 	"time"
 )
 
@@ -42,14 +44,26 @@ func init() {
 		logger.Fatal(err)
 	}
 
+	scheduleDuration, err := strconv.Atoi(os.Getenv("SCHEDULE_DURATION"))
+	if err != nil {
+		scheduleDuration = 1
+	}
+	duration := time.Duration(scheduleDuration) * time.Second
+
+	frameCount, err := strconv.Atoi(os.Getenv("FRAME_COUNT"))
+	if err != nil {
+		frameCount = 60
+	}
+
 	cfg = detect.DetectorConfig{
 		Camera:           cam,
 		SaveImagePath:    "./logs/detected",
-		ScheduleDuration: 10 * time.Second,
+		ScheduleDuration: duration,
 		SchedulerConfig: schedule.WorkerConfig{
 			SchedulerOptions: []gocron.SchedulerOption{},
 			Logger:           logger,
 		},
+		FrameCount: frameCount,
 	}
 }
 
@@ -57,13 +71,26 @@ func main() {
 	window := gocv.NewWindow("gohome")
 	defer window.Close()
 
+	windowWidth, widthErr := strconv.Atoi(os.Getenv("WINDOW_WIDTH"))
+	windowHeight, heightErr := strconv.Atoi(os.Getenv("WINDOW_HEIGHT"))
+	if widthErr == nil && heightErr == nil {
+		window.ResizeWindow(windowWidth, windowHeight)
+	}
+
+	img := gocv.NewMat()
+	windowDelay, err := strconv.Atoi(os.Getenv("WINDOW_DELAY"))
+	if err != nil {
+		windowDelay = 1
+	}
+
+	duration := time.Duration(windowDelay) * time.Millisecond
+
 	detector, err := detect.NewDetector(cfg)
 	if err != nil {
 		logger.Fatal(err)
 	}
 
-	img := gocv.NewMat()
-	err = detector.DetectWithWindow(window, &img)
+	err = detector.DetectWithWindow(window, &img, duration)
 	if err != nil {
 		log.Fatalln(err)
 	}

@@ -14,7 +14,7 @@ import (
 
 type Detector interface {
 	Detect(img *gocv.Mat) error
-	DetectWithWindow(window *gocv.Window, img *gocv.Mat) error
+	DetectWithWindow(window *gocv.Window, img *gocv.Mat, delay time.Duration) error
 	CloseCamera() error
 	StartSchedule()
 	StopSchedule() error
@@ -22,11 +22,19 @@ type Detector interface {
 }
 
 type DetectorImpl struct {
-	camera        *gocv.VideoCapture
-	saveImagePath string
-	scheduler     *schedule.Worker
-	logger        *zap.SugaredLogger
-	img           *gocv.Mat
+	camera    *gocv.VideoCapture
+	scheduler *schedule.Worker
+	logger    *zap.SugaredLogger
+	img       *gocv.Mat
+	cfg       DetectorConfig
+}
+
+type DetectorConfig struct {
+	Camera           *gocv.VideoCapture
+	SaveImagePath    string
+	ScheduleDuration time.Duration
+	SchedulerConfig  schedule.WorkerConfig
+	FrameCount       int
 }
 
 func (d *DetectorImpl) Detect(img *gocv.Mat) error {
@@ -39,7 +47,7 @@ func (d *DetectorImpl) Detect(img *gocv.Mat) error {
 
 	frameCounter := 0
 	motionDetected := false
-	for frameCounter < 60 {
+	for frameCounter < d.cfg.FrameCount {
 		if ok := d.camera.Read(img); !ok {
 			return fmt.Errorf("cannot read device")
 		}
@@ -48,51 +56,21 @@ func (d *DetectorImpl) Detect(img *gocv.Mat) error {
 		}
 
 		// HOG를 이용한 사람 감지
-		rects := hog.DetectMultiScale(*img)
-		for _, rect := range rects {
-			// 감지된 영역에 사각형 그리기
-			gocv.Rectangle(img, rect, color.RGBA{G: 255}, 3)
-
-			// 감지된 결과를 콘솔에 표시
-			if d.logger != nil {
-				d.logger.Infof("Detected person at: %v", rect)
-			} else {
-				log.Printf("Detected person at: %v\n", rect)
-			}
-			motionDetected = true
-		}
-
-		if motionDetected {
-			if d.saveImagePath != "" {
+		if motionDetected = d.detect(hog, img); motionDetected {
+			if d.cfg.SaveImagePath != "" {
 				now := time.Now().Format("20060102150405")
-				name := path.Join(d.saveImagePath,
+				name := path.Join(d.cfg.SaveImagePath,
 					fmt.Sprintf("%s_%d.jpg", now, frameCounter))
-
-				isSuccess := gocv.IMWrite(name, *img)
-				if isSuccess {
-					if d.logger != nil {
-						d.logger.Infof("Saved image: %s", name)
-					} else {
-						log.Printf("Saved image: %s\n", name)
-					}
-				} else {
-					if d.logger != nil {
-						d.logger.Errorf("Failed to save image: %s", name)
-					} else {
-						log.Printf("Failed to save image: %s\n", name)
-					}
-				}
+				d.saveImage(name, *img)
 			}
-			motionDetected = false
+			break
 		}
-
 		frameCounter++
 	}
-
 	return nil
 }
 
-func (d *DetectorImpl) DetectWithWindow(window *gocv.Window, img *gocv.Mat) error {
+func (d *DetectorImpl) DetectWithWindow(window *gocv.Window, img *gocv.Mat, delay time.Duration) error {
 	hog := gocv.NewHOGDescriptor()
 	defer hog.Close()
 	err := hog.SetSVMDetector(gocv.HOGDefaultPeopleDetector())
@@ -101,7 +79,6 @@ func (d *DetectorImpl) DetectWithWindow(window *gocv.Window, img *gocv.Mat) erro
 	}
 
 	frameCounter := 0
-	motionDetected := false
 	for {
 		if d.logger != nil {
 			d.logger.Infof("Read camera...")
@@ -115,47 +92,24 @@ func (d *DetectorImpl) DetectWithWindow(window *gocv.Window, img *gocv.Mat) erro
 			continue
 		}
 
-		// HOG를 이용한 사람 감지
-		if d.logger != nil {
-			d.logger.Infof("Detecting...")
-		} else {
-			log.Println("Detecting...")
-		}
-		rects := hog.DetectMultiScale(*img)
-		for _, rect := range rects {
-			// 감지된 영역에 사각형 그리기
-			gocv.Rectangle(img, rect, color.RGBA{G: 255}, 3)
-
-			// 감지된 결과를 콘솔에 표시
+		if frameCounter%d.cfg.FrameCount == 0 {
+			// HOG를 이용한 사람 감지
 			if d.logger != nil {
-				d.logger.Infof("Detected person at: %v", rect)
+				d.logger.Infof("Detecting...")
 			} else {
-				log.Printf("Detected person at: %v\n", rect)
+				log.Println("Detecting...")
 			}
-			motionDetected = true
-		}
 
-		if motionDetected && frameCounter%30 == 0 {
-			if d.saveImagePath != "" {
-				now := time.Now().Format("20060102150405")
-				name := path.Join(d.saveImagePath,
-					fmt.Sprintf("%s_%d.jpg", now, frameCounter))
-
-				isSuccess := gocv.IMWrite(name, *img)
-				if isSuccess {
-					if d.logger != nil {
-						d.logger.Infof("Saved image: %s", name)
-					} else {
-						log.Printf("Saved image: %s\n", name)
-					}
-				} else {
-					if d.logger != nil {
-						d.logger.Errorf("Failed to save image: %s", name)
-					} else {
-						log.Printf("Failed to save image: %s\n", name)
+			go func() {
+				if d.detect(hog, img) {
+					if d.cfg.SaveImagePath != "" {
+						now := time.Now().Format("20060102150405")
+						name := path.Join(d.cfg.SaveImagePath,
+							fmt.Sprintf("%s_%d.jpg", now, frameCounter))
+						go d.saveImage(name, *img)
 					}
 				}
-			}
+			}()
 		}
 
 		if d.logger != nil {
@@ -169,9 +123,9 @@ func (d *DetectorImpl) DetectWithWindow(window *gocv.Window, img *gocv.Mat) erro
 			log.Println("Quitting...")
 			break
 		}
-		time.Sleep(30 * time.Millisecond)
+
 		frameCounter++
-		motionDetected = false
+		time.Sleep(delay)
 	}
 
 	return nil
@@ -199,11 +153,40 @@ func (d *DetectorImpl) GetCurrentFrame() *gocv.Mat {
 	return d.img
 }
 
-type DetectorConfig struct {
-	Camera           *gocv.VideoCapture
-	SaveImagePath    string
-	ScheduleDuration time.Duration
-	SchedulerConfig  schedule.WorkerConfig
+func (d *DetectorImpl) detect(hog gocv.HOGDescriptor, img *gocv.Mat) bool {
+	rects := hog.DetectMultiScale(*img)
+	motionDetected := false
+	for _, rect := range rects {
+		// 감지된 영역에 사각형 그리기
+		gocv.Rectangle(img, rect, color.RGBA{G: 255}, 3)
+
+		// 감지된 결과를 콘솔에 표시
+		if d.logger != nil {
+			d.logger.Infof("Detected person at: %v", rect)
+		} else {
+			log.Printf("Detected person at: %v\n", rect)
+		}
+		motionDetected = true
+	}
+
+	return motionDetected
+}
+
+func (d *DetectorImpl) saveImage(name string, img gocv.Mat) {
+	isSuccess := gocv.IMWrite(name, img)
+	if isSuccess {
+		if d.logger != nil {
+			d.logger.Infof("Saved image: %s", name)
+		} else {
+			log.Printf("Saved image: %s\n", name)
+		}
+	} else {
+		if d.logger != nil {
+			d.logger.Errorf("Failed to save image: %s", name)
+		} else {
+			log.Printf("Failed to save image: %s\n", name)
+		}
+	}
 }
 
 func NewDetector(config DetectorConfig) (Detector, error) {
@@ -218,10 +201,10 @@ func NewDetector(config DetectorConfig) (Detector, error) {
 	}
 
 	detector := &DetectorImpl{
-		camera:        config.Camera,
-		saveImagePath: config.SaveImagePath,
-		scheduler:     scheduler,
-		logger:        config.SchedulerConfig.Logger,
+		camera:    config.Camera,
+		scheduler: scheduler,
+		logger:    config.SchedulerConfig.Logger,
+		cfg:       config,
 	}
 
 	img := gocv.NewMat()
