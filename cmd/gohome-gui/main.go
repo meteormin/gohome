@@ -55,6 +55,12 @@ func init() {
 		frameCount = 60
 	}
 
+	frameDelay, err := strconv.Atoi(os.Getenv("FRAME_DELAY"))
+	if err != nil {
+		frameDelay = 1
+	}
+	frameDelayDuration := time.Duration(frameDelay) * time.Millisecond
+
 	cfg = detect.DetectorConfig{
 		Camera:           cam,
 		SaveImagePath:    "./logs/detected",
@@ -64,6 +70,7 @@ func init() {
 			Logger:           logger,
 		},
 		FrameCount: frameCount,
+		FrameDelay: frameDelayDuration,
 	}
 }
 
@@ -78,19 +85,12 @@ func main() {
 	}
 
 	img := gocv.NewMat()
-	windowDelay, err := strconv.Atoi(os.Getenv("WINDOW_DELAY"))
-	if err != nil {
-		windowDelay = 1
-	}
-
-	duration := time.Duration(windowDelay) * time.Millisecond
-
 	detector, err := detect.NewDetector(cfg)
 	if err != nil {
 		logger.Fatal(err)
 	}
 
-	err = detector.DetectWithWindow(window, &img, duration)
+	err = detector.DetectWithWindow(window, &img)
 	if err != nil {
 		log.Fatalln(err)
 	}

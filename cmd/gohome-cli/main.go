@@ -58,6 +58,13 @@ func init() {
 		frameCount = 60
 	}
 
+	frameDelay, err := strconv.Atoi(os.Getenv("FRAME_DELAY"))
+	if err != nil {
+		frameDelay = 1
+	}
+
+	frameDelayDuration := time.Duration(frameDelay) * time.Millisecond
+
 	cfg = detect.DetectorConfig{
 		Camera:           cam,
 		SaveImagePath:    "./logs/detected",
@@ -67,6 +74,7 @@ func init() {
 			Logger:           logger,
 		},
 		FrameCount: frameCount,
+		FrameDelay: frameDelayDuration,
 	}
 }
 

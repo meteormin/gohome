@@ -14,7 +14,7 @@ import (
 
 type Detector interface {
 	Detect(img *gocv.Mat) error
-	DetectWithWindow(window *gocv.Window, img *gocv.Mat, delay time.Duration) error
+	DetectWithWindow(window *gocv.Window, img *gocv.Mat) error
 	CloseCamera() error
 	StartSchedule()
 	StopSchedule() error
@@ -35,6 +35,7 @@ type DetectorConfig struct {
 	ScheduleDuration time.Duration
 	SchedulerConfig  schedule.WorkerConfig
 	FrameCount       int
+	FrameDelay       time.Duration
 }
 
 func (d *DetectorImpl) Detect(img *gocv.Mat) error {
@@ -66,11 +67,12 @@ func (d *DetectorImpl) Detect(img *gocv.Mat) error {
 			break
 		}
 		frameCounter++
+		time.Sleep(d.cfg.FrameDelay)
 	}
 	return nil
 }
 
-func (d *DetectorImpl) DetectWithWindow(window *gocv.Window, img *gocv.Mat, delay time.Duration) error {
+func (d *DetectorImpl) DetectWithWindow(window *gocv.Window, img *gocv.Mat) error {
 	hog := gocv.NewHOGDescriptor()
 	defer hog.Close()
 	err := hog.SetSVMDetector(gocv.HOGDefaultPeopleDetector())
@@ -125,7 +127,7 @@ func (d *DetectorImpl) DetectWithWindow(window *gocv.Window, img *gocv.Mat, dela
 		}
 
 		frameCounter++
-		time.Sleep(delay)
+		time.Sleep(d.cfg.FrameDelay)
 	}
 
 	return nil
